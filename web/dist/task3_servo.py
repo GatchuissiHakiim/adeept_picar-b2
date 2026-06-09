@@ -4,25 +4,10 @@
 """
 Tâche 3 : Servomoteurs - Adeept PiCar-B
 
-Objectif :
-- Tester d'abord un servo libre branché sur CH15.
-- Puis piloter les 3 servos du robot : CH0, CH1, CH2.
-- Commande manuelle sous forme : numero_servo angle
-
-Angle choisi : relatif, de -90 à +90 degrés.
-Exemple :
-    15 0
-    15 30
-    0 -20
-    1 45
-    2 -30
-    all 0
-    q
-
-Attention :
-- CH15 est partagé avec les canaux moteur sur le PCA9685.
-- Ne pas lancer move.py / functions.py en même temps.
-- Pour le test CH15, garder le robot immobile, idéalement roues levées.
+Version sécurisée pour robot assemblé :
+- Test du servo libre sur CH3, pas CH15.
+- Pilotage des 3 servos montés sur le robot : CH0, CH1, CH2.
+- Les canaux CH8 à CH15 sont interdits car ils sont liés aux moteurs.
 """
 
 import time
@@ -32,33 +17,30 @@ from adafruit_motor import servo
 from adafruit_pca9685 import PCA9685
 
 
-# Adresse I2C de la Robot HAT Adeept V3.1
 PCA9685_ADDRESS = 0x5F
 PWM_FREQUENCY = 50
 
-# Plage d'impulsion utilisée par le fichier Adeept RPIservo.py
 MIN_PULSE = 500
 MAX_PULSE = 2400
 ACTUATION_RANGE = 180
-
-# Position centrale absolue des servos
 NEUTRAL_ABS = 90
 
-# Limites relatives de sécurité.
-# On évite volontairement les -90 / +90 complets pour ne pas forcer les butées.
+# Canaux moteurs du PiCar-B : à ne pas utiliser pour les servos.
+MOTOR_CHANNELS = set(range(8, 16))
+
+# Canaux autorisés pour les servos.
+# CH3 remplace CH15 pour tester le servo libre.
 SERVO_LIMITS = {
-    0: (-40, 40),   # Direction des roues avant
-    1: (-60, 60),   # Tête / caméra / ultrason gauche-droite
-    2: (-45, 45),   # Tête / caméra / ultrason haut-bas
-    15: (-60, 60),  # Servo libre de test sur CH15
+    0: (-40, 40),   # Direction roues avant
+    1: (-60, 60),   # Tête gauche-droite
+    2: (-45, 45),   # Tête haut-bas
+    3: (-60, 60),   # Servo libre de test
 }
 
-# Servos du robot à valider dans la partie finale
 ROBOT_SERVOS = [0, 1, 2]
 
 
 def clamp(value, min_value, max_value):
-    """Limite une valeur entre min_value et max_value."""
     return max(min_value, min(value, max_value))
 
 
@@ -71,8 +53,26 @@ class ServoController:
         self.servos = {}
         self.current_abs_angles = {}
 
+        # Sécurité : on coupe les PWM des canaux moteurs au démarrage.
+        self.stop_motor_channels()
+
+    def stop_motor_channels(self):
+        for channel in MOTOR_CHANNELS:
+            self.pca.channels[channel].duty_cycle = 0
+
     def get_servo(self, channel):
-        """Crée l'objet servo uniquement quand on en a besoin."""
+        if channel in MOTOR_CHANNELS:
+            raise ValueError(
+                f"CH{channel} est réservé aux moteurs sur ce robot. "
+                "Utilise CH0, CH1, CH2 ou CH3."
+            )
+
+        if channel not in SERVO_LIMITS:
+            raise ValueError(
+                f"CH{channel} non autorisé. "
+                f"Canaux autorisés : {list(SERVO_LIMITS.keys())}"
+            )
+
         if channel not in self.servos:
             self.servos[channel] = servo.Servo(
                 self.pca.channels[channel],
@@ -81,42 +81,29 @@ class ServoController:
                 actuation_range=ACTUATION_RANGE,
             )
             self.current_abs_angles[channel] = NEUTRAL_ABS
+
         return self.servos[channel]
 
     def relative_to_absolute(self, channel, relative_angle):
-        """
-        Convertit un angle relatif (-90 à +90 théorique)
-        en angle absolu servo (0 à 180).
-        """
         min_rel, max_rel = SERVO_LIMITS[channel]
         safe_relative = clamp(relative_angle, min_rel, max_rel)
-        absolute_angle = NEUTRAL_ABS + safe_relative
-        absolute_angle = clamp(absolute_angle, 0, 180)
+        absolute_angle = clamp(NEUTRAL_ABS + safe_relative, 0, 180)
         return safe_relative, absolute_angle
 
     def set_servo_angle(self, channel, relative_angle, smooth=True):
         """
-        Fonction demandée par la tâche :
-        prend en paramètres le numéro du servo et l'angle en degrés.
+        Fonction demandée :
+        set_servo_angle(numero_servo, angle_en_degres)
 
-        Ici, l'angle est relatif :
-        - 0 correspond au centre
-        - valeur négative : sens 1
-        - valeur positive : sens opposé
+        Angle relatif :
+        - 0 = centre
+        - négatif = sens 1
+        - positif = sens opposé
         """
-        if channel not in SERVO_LIMITS:
-            raise ValueError(
-                f"Servo {channel} non autorisé. "
-                f"Utilise seulement : {list(SERVO_LIMITS.keys())}"
-            )
-
-        safe_relative, target_abs = self.relative_to_absolute(channel, relative_angle)
         servo_obj = self.get_servo(channel)
+        safe_relative, target_abs = self.relative_to_absolute(channel, relative_angle)
 
-        if not smooth:
-            servo_obj.angle = target_abs
-            self.current_abs_angles[channel] = target_abs
-        else:
+        if smooth:
             start_abs = self.current_abs_angles.get(channel, NEUTRAL_ABS)
             step = 1 if target_abs >= start_abs else -1
 
@@ -124,53 +111,47 @@ class ServoController:
                 servo_obj.angle = angle
                 time.sleep(0.01)
 
-            servo_obj.angle = target_abs
-            self.current_abs_angles[channel] = target_abs
+        servo_obj.angle = target_abs
+        self.current_abs_angles[channel] = target_abs
 
         print(
-            f"Servo CH{channel} -> angle relatif demandé : {relative_angle}°, "
-            f"angle appliqué : {safe_relative}°, "
-            f"angle absolu PWM : {target_abs}°"
+            f"CH{channel} | demandé : {relative_angle}° | "
+            f"appliqué : {safe_relative}° | PWM absolu : {target_abs}°"
         )
 
     def center_servo(self, channel):
-        """Replace un servo au centre."""
         self.set_servo_angle(channel, 0)
 
     def center_robot_servos(self):
-        """Replace les 3 servos montés sur le robot au centre."""
         for channel in ROBOT_SERVOS:
             self.center_servo(channel)
             time.sleep(0.3)
 
     def deinit(self):
-        """Libère proprement le PCA9685."""
+        self.stop_motor_channels()
         self.pca.deinit()
 
 
 def print_help():
     print()
-    print("Commandes disponibles :")
-    print("  15 0       -> centre le servo libre branché sur CH15")
-    print("  15 30      -> tourne le servo libre à +30°")
-    print("  0 -20      -> tourne le servo CH0 à -20°")
-    print("  1 45       -> tourne le servo CH1 à +45°")
-    print("  2 -30      -> tourne le servo CH2 à -30°")
-    print("  all 0      -> centre les servos CH0, CH1, CH2")
-    print("  help       -> affiche l'aide")
-    print("  q          -> quitter")
+    print("Commandes :")
+    print("  3 0       -> centre le servo libre branché sur CH3")
+    print("  3 20      -> servo libre à +20°")
+    print("  3 -20     -> servo libre à -20°")
+    print("  0 -20     -> direction roues avant")
+    print("  1 30      -> tête gauche-droite")
+    print("  2 -20     -> tête haut-bas")
+    print("  all 0     -> centre CH0, CH1, CH2")
+    print("  q         -> quitter")
     print()
 
 
 def main():
     controller = ServoController()
 
-    print("=== Tâche 3 : contrôle manuel des servomoteurs ===")
-    print("Angle utilisé : relatif, avec 0° = position centrale.")
-    print("Sécurité : les angles sont limités pour éviter les butées.")
-    print()
-    print("Étape conseillée : tester d'abord le servo libre sur CH15.")
-    print("Exemple : 15 0 puis 15 30 puis 15 -30")
+    print("=== Tâche 3 : Servomoteurs PiCar-B ===")
+    print("Version sécurisée : CH15 interdit, test servo libre sur CH3.")
+    print("Ne pas utiliser CH8 à CH15 : canaux liés aux moteurs.")
     print_help()
 
     try:
@@ -184,13 +165,13 @@ def main():
                 print_help()
                 continue
 
-            if command == "":
+            if not command:
                 continue
 
             parts = command.split()
 
             if len(parts) != 2:
-                print("Commande invalide. Exemple attendu : 15 30")
+                print("Commande invalide. Exemple : 3 20")
                 continue
 
             servo_id_text, angle_text = parts
@@ -198,33 +179,27 @@ def main():
             try:
                 angle = float(angle_text)
             except ValueError:
-                print("Angle invalide. Exemple : 30, -30, 0")
+                print("Angle invalide.")
                 continue
 
             if servo_id_text == "all":
                 if angle != 0:
-                    print("Pour 'all', utilise seulement : all 0")
+                    print("Utilise seulement : all 0")
                     continue
-
                 controller.center_robot_servos()
                 continue
 
             try:
                 servo_id = int(servo_id_text)
-            except ValueError:
-                print("Numéro de servo invalide. Utilise 0, 1, 2, 15 ou all.")
-                continue
-
-            try:
                 controller.set_servo_angle(servo_id, angle)
             except ValueError as error:
                 print(error)
 
     except KeyboardInterrupt:
-        print("\nArrêt demandé au clavier.")
+        print("\nArrêt clavier.")
 
     finally:
-        print("Retour au centre des servos déjà utilisés...")
+        print("Retour au centre des servos utilisés...")
         for channel in list(controller.servos.keys()):
             try:
                 controller.center_servo(channel)
@@ -233,7 +208,7 @@ def main():
                 pass
 
         controller.deinit()
-        print("Fin du programme.")
+        print("Fin.")
 
 
 if __name__ == "__main__":
