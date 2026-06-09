@@ -1,10 +1,10 @@
 import sys
 sys.path.append('/home/vigiris/adeept_picar-b2/examples/')
 from importlib import import_module
-ws2812 = import_module('06_ws2812')
-
-
+ws2812 = import_module('06_Spi_WS2812')
 Adeept_SPI_LedPixel = ws2812.Adeept_SPI_LedPixel
+Adeept_SPI_LedPixel = ws2812.Adeept_SPI_LedPixel
+
 NB_LEDS      = 14
 COULEURS_OK  = ('R', 'G', 'B', 'N')
 
