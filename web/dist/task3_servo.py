@@ -8,6 +8,7 @@ Version sécurisée pour robot assemblé :
 - Test du servo libre sur CH3, pas CH15.
 - Pilotage des 3 servos montés sur le robot : CH0, CH1, CH2.
 - Les canaux CH8 à CH15 sont interdits car ils sont liés aux moteurs.
+- Ajout d'une démo signature coordonnée des 3 servos.
 """
 
 import time
@@ -119,6 +120,103 @@ class ServoController:
             f"appliqué : {safe_relative}° | PWM absolu : {target_abs}°"
         )
 
+    def set_many_angles(self, targets, duration=0.6, steps=30):
+        """
+        Déplace plusieurs servos de manière coordonnée et progressive.
+
+        targets est un dictionnaire :
+            {numero_servo: angle_relatif}
+
+        Exemple :
+            self.set_many_angles({0: 10, 1: -30, 2: 15})
+        """
+        if steps <= 0:
+            steps = 1
+
+        target_abs = {}
+        start_abs = {}
+
+        # Préparation des servos et calcul des angles sécurisés.
+        for channel, relative_angle in targets.items():
+            self.get_servo(channel)
+            _, abs_angle = self.relative_to_absolute(channel, relative_angle)
+
+            target_abs[channel] = abs_angle
+            start_abs[channel] = self.current_abs_angles.get(channel, NEUTRAL_ABS)
+
+        # Mouvement progressif avec interpolation douce.
+        for step_index in range(1, steps + 1):
+            t = step_index / steps
+
+            # Interpolation smoothstep : mouvement plus naturel.
+            eased_t = 3 * t * t - 2 * t * t * t
+
+            for channel in targets:
+                angle = start_abs[channel] + (
+                    target_abs[channel] - start_abs[channel]
+                ) * eased_t
+
+                self.servos[channel].angle = angle
+
+            time.sleep(duration / steps)
+
+        # Mise à jour des positions connues.
+        for channel in targets:
+            self.current_abs_angles[channel] = target_abs[channel]
+
+    def signature_demo(self):
+        """
+        Démo distinctive pour la tâche 3 :
+        - retour au neutre
+        - mouvement "non" avec la tête
+        - mouvement "oui" avec la tête
+        - balayage type radar
+        - petit salut final
+        - retour automatique au neutre
+        """
+        print("Démo signature : chorégraphie coordonnée des 3 servos.")
+
+        # Position neutre.
+        self.set_many_angles({0: 0, 1: 0, 2: 0}, duration=0.6)
+        time.sleep(0.3)
+
+        # Le robot dit "non" avec la tête gauche-droite.
+        for _ in range(2):
+            self.set_many_angles({1: -35}, duration=0.25)
+            self.set_many_angles({1: 35}, duration=0.25)
+        self.set_many_angles({1: 0}, duration=0.25)
+
+        # Le robot dit "oui" avec la tête haut-bas.
+        for _ in range(2):
+            self.set_many_angles({2: -20}, duration=0.25)
+            self.set_many_angles({2: 20}, duration=0.25)
+        self.set_many_angles({2: 0}, duration=0.25)
+
+        # Balayage type radar : tête + légère orientation des roues.
+        scan_positions = [-50, -25, 0, 25, 50, 25, 0, -25, 0]
+
+        for pan in scan_positions:
+            steering = int(-pan * 0.25)
+            tilt = 10 if pan > 0 else -10 if pan < 0 else 0
+
+            self.set_many_angles(
+                {
+                    0: steering,
+                    1: pan,
+                    2: tilt,
+                },
+                duration=0.30
+            )
+
+        # Petit salut final.
+        for _ in range(2):
+            self.set_many_angles({1: 40, 2: -20}, duration=0.25)
+            self.set_many_angles({1: 40, 2: 15}, duration=0.25)
+
+        # Retour au centre.
+        self.set_many_angles({0: 0, 1: 0, 2: 0}, duration=0.8)
+        print("Démo terminée : servos revenus au neutre.")
+
     def center_servo(self, channel):
         self.set_servo_angle(channel, 0)
 
@@ -135,14 +233,18 @@ class ServoController:
 def print_help():
     print()
     print("Commandes :")
-    print("  3 0       -> centre le servo libre branché sur CH3")
-    print("  3 20      -> servo libre à +20°")
-    print("  3 -20     -> servo libre à -20°")
-    print("  0 -20     -> direction roues avant")
-    print("  1 30      -> tête gauche-droite")
-    print("  2 -20     -> tête haut-bas")
-    print("  all 0     -> centre CH0, CH1, CH2")
-    print("  q         -> quitter")
+    print("  3 0          -> centre le servo libre branché sur CH3")
+    print("  3 20         -> servo libre à +20°")
+    print("  3 -20        -> servo libre à -20°")
+    print("  0 -20        -> direction roues avant")
+    print("  1 30         -> tête gauche-droite")
+    print("  2 -20        -> tête haut-bas")
+    print("  all 0        -> centre CH0, CH1, CH2")
+    print("  demo         -> lance la démo signature")
+    print("  signature    -> lance la démo signature")
+    print("  show         -> lance la démo signature")
+    print("  help         -> affiche cette aide")
+    print("  q            -> quitter")
     print()
 
 
@@ -152,6 +254,7 @@ def main():
     print("=== Tâche 3 : Servomoteurs PiCar-B ===")
     print("Version sécurisée : CH15 interdit, test servo libre sur CH3.")
     print("Ne pas utiliser CH8 à CH15 : canaux liés aux moteurs.")
+    print("Commande distinctive disponible : demo")
     print_help()
 
     try:
@@ -165,6 +268,12 @@ def main():
                 print_help()
                 continue
 
+            # Important : cette commande doit être testée avant le split,
+            # car elle ne contient pas deux éléments du type "servo angle".
+            if command in ("demo", "signature", "show"):
+                controller.signature_demo()
+                continue
+
             if not command:
                 continue
 
@@ -172,6 +281,7 @@ def main():
 
             if len(parts) != 2:
                 print("Commande invalide. Exemple : 3 20")
+                print("Tape 'help' pour voir les commandes disponibles.")
                 continue
 
             servo_id_text, angle_text = parts
