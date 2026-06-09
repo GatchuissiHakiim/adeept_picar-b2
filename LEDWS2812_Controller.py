@@ -115,7 +115,7 @@ if __name__ == '__main__':
     try:
         protocole_manuel()
     except KeyboardInterrupt:
-        pass
+        print('Fin de programme par Ctrl-C')
     finally:
         led.set_all_led_color(0, 0, 0)
         print("\nToutes les LEDs éteintes. Au revoir.")
