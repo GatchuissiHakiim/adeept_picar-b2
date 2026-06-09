@@ -1,10 +1,7 @@
 print("Hi")
-
-import spidev
-import time
-
-
-from Adeept_SPI_LedPixel import Adeept_SPI_LedPixet
+import sys
+sys.path.append('/home/vigiris/adeept_picar-b2/examples/')
+from ws2812 import Adeept_SPI_LedPixel
 
 
 NB_LEDS      = 14
