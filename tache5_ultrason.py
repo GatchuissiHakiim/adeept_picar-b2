@@ -1,8 +1,37 @@
-from gpiozero import DistanceSensor
+from gpiozero import DistanceSensor, TonalBuzzer
 from time import sleep
 
 TRIG = 23
 ECHO = 24
+
+sensor = DistanceSensor(echo=ECHO, trigger=TRIG, max_distance=2)
+buzzer = TonalBuzzer(18)
+
+def alerte_sonore(distance):
+    if distance is None:
+        buzzer.stop()
+        return
+
+    if distance > 600:
+        buzzer.stop()
+
+    elif distance > 300:
+        buzzer.play("C4")
+        sleep(0.08)
+        buzzer.stop()
+        sleep(0.8)
+
+    elif distance > 150:
+        buzzer.play("E4")
+        sleep(0.08)
+        buzzer.stop()
+        sleep(0.3)
+
+    else:
+        buzzer.play("G4")
+        sleep(0.08)
+        buzzer.stop()
+        sleep(0.08)
 
 sensor = DistanceSensor(
     echo=ECHO,
@@ -41,7 +70,9 @@ if __name__ == "__main__":
 
             else:
                 print(f"Distance : {distance:.0f} mm")
+	   
 
+            alerte_sonore(distance)
             sleep(0.2)
 
     except KeyboardInterrupt:
