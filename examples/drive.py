@@ -40,16 +40,29 @@ def drive_ramp(direction, target_speed=100, ramp_time=1.0):
         motor1.throttle = throttle
         time.sleep(delay) 
 
+def drive_full(speed, direction, ramp_time=0.0):
+    if direction == 0 or speed == 0:
+        motor1.throttle = 0
+        return
+    speed = max(0, min(100, speed))
+    if ramp_time > 0:
+        drive_ramp(direction, target_speed=speed, ramp_time=ramp_time)
+    else:
+        throttle = speed / 100.0
+        if direction == -1:
+            throttle = -throttle
+        motor1.throttle = throttle
+
 if __name__ == '__main__':
-    print("Rampe avant")
-    drive_ramp(1)
+    print("drive_full 75 pourcents avec rampe de 1s")
+    drive_full(75, 1, ramp_time=1.0)
     time.sleep(1)
     print("Stop")
-    drive(0)
+    drive_full(0, 0)
     time.sleep(1)
-    print("Rampe arrière")
-    drive_ramp(-1)
+    print("drive_full 75% pourcents arrière avec rampe de 1s")
+    drive_full(75, -1, ramp_time=1.0)
     time.sleep(1)
     print("Stop final")
-    drive(0)
+    drive_full(0, 0)
     destroy()
