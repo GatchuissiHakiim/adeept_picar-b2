@@ -53,16 +53,27 @@ def drive_full(speed, direction, ramp_time=0.0):
             throttle = -throttle
         motor1.throttle = throttle
 
-if __name__ == '__main__':
-    print("drive_full 75 pourcents avec rampe de 1s")
-    drive_full(75, 1, ramp_time=1.0)
-    time.sleep(1)
-    print("Stop")
-    drive_full(0, 0)
-    time.sleep(1)
-    print("drive_full 75% pourcents arrière avec rampe de 1s")
-    drive_full(75, -1, ramp_time=1.0)
-    time.sleep(1)
-    print("Stop final")
-    drive_full(0, 0)
-    destroy()
+def manual_test():
+    print("\n=== MODE MANUEL ===")
+    print("z = avant  |  s = arrière  |  w = stop  |  x = quitter")
+    while True:
+        cmd = input("Commande : ").strip().lower()
+        if cmd == "z":
+            print("→ Avant 25%")
+            drive_full(25, 1, ramp_time=1)
+        elif cmd == "s":
+            print("→ Arrière 25%")
+            drive_full(25, -1, ramp_time=1)
+        elif cmd == "w" or cmd == "stop":
+            print("→ Stop")
+            drive(0)
+        elif cmd == "x":
+            print("→ Quitter")
+            drive(0)
+            destroy()
+            break
+        else:
+            print("  touche non reconnue")
+
+if __name__ == "__main__":
+        manual_test()
