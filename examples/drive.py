@@ -27,16 +27,29 @@ def drive(direction):
         throttle = -throttle
     motor1.throttle = throttle
 
+def drive_ramp(direction, target_speed=100, ramp_time=1.0):
+    if direction == 0:
+        motor1.throttle = 0
+        return
+    steps = 50
+    delay = ramp_time / steps
+    for step in range(1, steps + 1):
+        throttle = (step / steps) * (target_speed / 100.0)
+        if direction == -1:
+            throttle = -throttle
+        motor1.throttle = throttle
+        time.sleep(delay) 
+
 if __name__ == '__main__':
-    print("Avant 25%")
-    drive(1) # Lance le moteur en avant à 25% de sa puissance
-    time.sleep(2)
+    print("Rampe avant")
+    drive_ramp(1)
+    time.sleep(1)
     print("Stop")
     drive(0)
     time.sleep(1)
-    print("Arrière 25%")
-    drive(-1)
-    time.sleep(2)
+    print("Rampe arrière")
+    drive_ramp(-1)
+    time.sleep(1)
     print("Stop final")
     drive(0)
     destroy()
