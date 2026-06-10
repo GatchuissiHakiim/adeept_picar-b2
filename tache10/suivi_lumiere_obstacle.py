@@ -4,7 +4,7 @@
 #  CTP2 Mastercamp - Systemes Embarques
 #  Tache 10 : Suivi de source lumineuse avec gestion d'obstacle
 #
-#  Auteur : Maiwenn
+#  Auteur : Maïwen
 #  Date   : 10 juin 2026
 # =============================================================
 
