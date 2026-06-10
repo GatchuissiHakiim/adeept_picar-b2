@@ -1,6 +1,3 @@
-#!/usr/bin/env python3
-# -*- coding: utf-8 -*-
-
 """
 Tâche 6 : Capteur de suivi de ligne - Adeept PiCar-B
 
@@ -11,8 +8,13 @@ Objectif :
 - Donner une interprétation adaptée au comportement observé sur notre robot.
 
 Comportement observé sur notre PiCar-B :
-- 0 = réflexion détectée, surface claire proche
-- 1 = faible réflexion, ligne noire, vide ou surface trop éloignée
+- 0 = réflexion détectée : surface claire/proche/réfléchissante
+- 1 = faible réflexion : ligne noire, vide, trop loin, ou surface peu réfléchissante
+
+Attention :
+Mettre un doigt sous un capteur ne simule pas forcément une ligne noire.
+La peau peut réfléchir l'infrarouge si elle est très proche du capteur.
+Donc un doigt proche peut produire 0, pas 1.
 
 Module connecté sur X8 Line Tracking :
 - Gauche : GPIO22
@@ -36,7 +38,6 @@ LINE_PIN_RIGHT = 17
 DEFAULT_INTERVAL = 0.20
 
 # Si True, affiche uniquement quand l'état change.
-# C'est beaucoup plus lisible pour la démonstration.
 ONLY_ON_CHANGE = True
 
 
@@ -77,19 +78,23 @@ class LineTrackingSensor:
         """
         Interprétation adaptée au comportement observé sur notre PiCar-B.
 
-        Dans notre montage :
-        - 0 = réflexion détectée, surface claire proche
-        - 1 = faible réflexion, ligne noire, vide ou surface trop éloignée
+        Convention :
+        - 0 = réflexion détectée : surface claire/proche/réfléchissante
+        - 1 = faible réflexion : ligne noire, vide, trop loin, ou surface sombre
+
+        Pour une vraie piste de suivi :
+        - une ligne noire sous un capteur tend à faire passer ce capteur à 1.
+        - une feuille claire proche tend à produire 0.
         """
         interpretations = {
-            "000": "surface claire sous les 3 capteurs",
+            "000": "surface claire/proche sous les 3 capteurs",
             "010": "ligne noire probablement centrée",
             "100": "ligne noire détectée côté gauche",
             "001": "ligne noire détectée côté droit",
             "110": "ligne noire entre gauche et centre",
             "011": "ligne noire entre centre et droit",
-            "101": "cas ambigu : gauche et droit sombres, centre clair",
-            "111": "noir partout, vide, ou surface trop éloignée",
+            "101": "centre réfléchissant/proche, côtés sombres/vides/trop loin",
+            "111": "noir partout, vide, trop loin, ou absence de réflexion",
         }
 
         return interpretations.get(pattern, "état inconnu")
@@ -98,16 +103,16 @@ class LineTrackingSensor:
         """
         Représentation visuelle rapide des trois capteurs.
 
-        B = Blanc / réflexion détectée / surface claire proche
-        N = Noir / faible réflexion / ligne noire / vide / trop loin
+        R = réflexion détectée, surface claire/proche/réfléchissante
+        F = faible réflexion, ligne noire/vide/trop loin
         """
         symbols = []
 
         for bit in pattern:
-            if bit == "1":
-                symbols.append("N")
+            if bit == "0":
+                symbols.append("R")
             else:
-                symbols.append("B")
+                symbols.append("F")
 
         return " ".join(symbols)
 
@@ -170,24 +175,29 @@ def print_start_message():
     print("  R = capteur droit")
     print()
     print("Convention observée sur notre PiCar-B :")
-    print("  0 = surface claire proche / réflexion détectée")
-    print("  1 = ligne noire, vide, trop loin, ou faible réflexion")
+    print("  0 = réflexion détectée : surface claire/proche/réfléchissante")
+    print("  1 = faible réflexion : ligne noire, vide, trop loin, ou surface sombre")
     print()
     print("Visualisation :")
-    print("  B = Blanc / réflexion détectée")
-    print("  N = Noir / faible réflexion")
+    print("  R = réflexion détectée")
+    print("  F = faible réflexion")
     print()
     print("Exemples attendus :")
-    print("  L:0 M:0 R:0 | pattern: 000 | B B B | surface claire sous les 3 capteurs")
-    print("  L:0 M:1 R:0 | pattern: 010 | B N B | ligne noire probablement centrée")
-    print("  L:1 M:0 R:0 | pattern: 100 | N B B | ligne noire détectée côté gauche")
-    print("  L:0 M:0 R:1 | pattern: 001 | B B N | ligne noire détectée côté droit")
+    print("  L:0 M:0 R:0 | pattern: 000 | R R R | surface claire/proche sous les 3 capteurs")
+    print("  L:0 M:1 R:0 | pattern: 010 | R F R | ligne noire probablement centrée")
+    print("  L:1 M:0 R:0 | pattern: 100 | F R R | ligne noire détectée côté gauche")
+    print("  L:0 M:0 R:1 | pattern: 001 | R R F | ligne noire détectée côté droit")
+    print("  L:1 M:0 R:1 | pattern: 101 | F R F | centre réfléchissant/proche, côtés sans reflet")
+    print()
+    print("Important :")
+    print("  Un doigt proche peut réfléchir l'infrarouge et donc produire 0.")
+    print("  Pour simuler une vraie ligne noire, utiliser plutôt du ruban noir ou un marqueur noir mat.")
     print()
     print("Test conseillé :")
-    print("  1. Placer une feuille claire sous le module.")
-    print("  2. Observer l'état 000 si les trois capteurs voient le clair.")
-    print("  3. Déplacer une ligne noire sous le capteur gauche, central, puis droit.")
-    print("  4. Vérifier que les bits L, M, R changent dans le bon ordre.")
+    print("  1. Robot surélevé : on observe souvent 111 si les capteurs ne voient rien.")
+    print("  2. Feuille claire proche : on attend plutôt 000.")
+    print("  3. Ligne noire centrée : on attend plutôt 010.")
+    print("  4. Vérifier séparément gauche, centre, droite avec une bande noire.")
     print()
     print("Arrêt : Ctrl + C")
     print()
