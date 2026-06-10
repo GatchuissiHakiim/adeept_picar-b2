@@ -10,9 +10,9 @@ pwm.frequency = 50
 SERVO_CHANNEL = 0   
 
 # Valeurs à calibrer en duty cycle (0-65535)
-SERVO_MIN    = 3277   # butée gauche  
-SERVO_CENTER = 4915   # centre       
-SERVO_MAX    = 6553   # butée droite  
+SERVO_MIN    = 2977   # butée gauche  
+SERVO_CENTER = 5215   # centre       
+SERVO_MAX    = 7153   # butée droite  
 
 
 def set_servo_raw(value):
@@ -62,5 +62,19 @@ def calibrate_servo():
     set_servo_angle(0)
 
 
-if __name__ == '__main__':
-    calibrate_servo()
+#if __name__ == '__main__':
+#    calibrate_servo()       # Pour appeler la fonction permettant de calibrer le servo de direction
+
+if __name__ == '__main__':   # Pour configurer le servo de direction sur les paramètre initiaux récupérés via la calibration
+    print("Test centre")
+    set_servo_angle(0)
+    time.sleep(1)
+    print("Test gauche")
+    set_servo_angle(-100)
+    time.sleep(1)
+    print("Test droite")
+    set_servo_angle(100)
+    time.sleep(1)
+    print("Retour centre")
+    set_servo_angle(0)
+    pwm.deinit()
