@@ -39,14 +39,4 @@ if __name__ == '__main__':
     except KeyboardInterrupt:
         feux_off()
         print("Feux éteints.")
-def feux_detresse_on():
-    set_led(4, 1)   
-    set_led(7, 1)   
-    for i in range(NB_LEDS):
-        led.set_led_color(i, 255, 0, 0) 
-    time.sleep(0.5)
-    set_led(4, 0)
-    set_led(7, 0)
-    for i in range(NB_LEDS):
-        led.set_led_color(i, 0, 0, 0)
-    time.sleep(0.5)
+
