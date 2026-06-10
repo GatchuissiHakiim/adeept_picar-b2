@@ -5,7 +5,7 @@ sys.path.append("./tache4_moteur")
 
 from drive import drive_full, drive, destroy
 from tache5_ultrason import distance_mm, alerte_sonore
-from tache3_servo import ServoController
+from task3_servo import ServoController
 
 
 DISTANCE_DANGER = 200
