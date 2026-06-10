@@ -33,11 +33,7 @@ def alerte_sonore(distance):
         buzzer.stop()
         sleep(0.08)
 
-sensor = DistanceSensor(
-    echo=ECHO,
-    trigger=TRIG,
-    max_distance=2
-)
+
 
 def distance_mm(nb_mesures=5):
     mesures = []
