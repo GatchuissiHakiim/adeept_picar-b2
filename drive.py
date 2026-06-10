@@ -4,9 +4,7 @@ import busio
 from adafruit_pca9685 import PCA9685
 from adafruit_motor import motor
 
-i2c = busio.I2C(SCL, SDA)
-pwm_motor = PCA9685(i2c, address=0x5f)
-pwm_motor.frequency = 50
+from pca import pwm as pwm_motor
 
 MOTOR_M1_IN1 = 15
 MOTOR_M1_IN2 = 14

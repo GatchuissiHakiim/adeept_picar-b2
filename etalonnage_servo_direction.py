@@ -3,9 +3,7 @@ from board import SCL, SDA
 import busio
 from adafruit_pca9685 import PCA9685
 
-i2c = busio.I2C(SCL, SDA)
-pwm = PCA9685(i2c, address=0x5f)
-pwm.frequency = 50
+from pca import pwm
 
 SERVO_CHANNEL = 0   
 
