@@ -11,7 +11,8 @@
 import sys
 import select
 import time
-from drive import drive_full, drive, destroy
+
+
 
 # --- Module moteur de la Tache 4 (ecrit par Anthony) ---
 # drive_full(speed, direction, ramp_time) : avance/recule avec rampe
@@ -20,12 +21,16 @@ from drive import drive_full, drive, destroy
 # destroy()  : arret + liberation propre du PWM
 from drive import drive_full, drive, destroy
 
+from tache5_ultrason import distance_mm
+
 # -------------------------------------------------------------
 #  Parametres
 # -------------------------------------------------------------
 VITESSE_MARCHE = 25  # % du max : vitesse reduite pour les tests (consigne)
 RAMPE = 1.0  # duree de la rampe d'acceleration en secondes
 PERIODE_BOUCLE = 0.2  # pause entre deux tours de boucle (secondes)
+
+SEUIL_OBSTACLE = 200     # mm (20 cm) : distance d'arret sur obstacle
 
 
 # -------------------------------------------------------------
@@ -47,7 +52,7 @@ def lire_touche():
 #  Programme principal
 # -------------------------------------------------------------
 def main():
-    print("=== Tache 10 - Brique 2 (marche avant / arret) ===")
+    print("=== Tache 10 - Brique 3 (marche + detection obstacle) ===")
     print("Commandes : 'M' = marche / 'A' = arret / Ctrl+C = quitter")
 
     en_marche = False  # etat courant du robot
@@ -69,8 +74,17 @@ def main():
                 else:
                     print(f">> Touche ignoree : '{touche}'")
 
-            # --- 2. Code principal ---
-            # (ici viendront plus tard : detection obstacle, suivi lumiere)
+            # --- 2. Code principal : surveillance obstacle si en marche ---
+            if en_marche:
+                distance = distance_mm()
+                if distance is not None:
+                    print(f"   distance : {distance:.0f} mm")
+
+                if distance is not None and distance < SEUIL_OBSTACLE:
+                    print(f">> OBSTACLE a {distance:.0f} mm : ARRET")
+                    drive(0)
+                    en_marche = False
+                    # (brique 4 : ici viendront feux de detresse + recul + bip)
 
             # --- 3. Pause pour ne pas saturer le processeur ---
             time.sleep(PERIODE_BOUCLE)
