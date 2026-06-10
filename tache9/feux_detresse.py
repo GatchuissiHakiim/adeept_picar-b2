@@ -14,10 +14,10 @@ led.setDaemon(True)
 led.start()
 
 def feux_detresse_on():
-    set_led(6, 1)   # left_R
-    set_led(7, 1)   # right_R
+    set_led(6, 1)   
+    set_led(7, 1)   
     for i in range(NB_LEDS):
-        led.set_led_color(i, 255, 0, 0)  # rouge pur
+        led.set_led_color(i, 255, 0, 0) 
     time.sleep(0.5)
     set_led(6, 0)
     set_led(7, 0)
@@ -40,12 +40,10 @@ if __name__ == '__main__':
         feux_off()
         print("Feux éteints.")
 def feux_detresse_on():
-    set_led(4, 1)   # left_R
-    # set_led(5, 1) # left_G  <- supprimé
-    set_led(7, 1)   # right_R
-    # set_led(8, 1) # right_G <- supprimé
+    set_led(4, 1)   
+    set_led(7, 1)   
     for i in range(NB_LEDS):
-        led.set_led_color(i, 255, 0, 0)  # rouge pur
+        led.set_led_color(i, 255, 0, 0) 
     time.sleep(0.5)
     set_led(4, 0)
     set_led(7, 0)
