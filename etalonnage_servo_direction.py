@@ -10,8 +10,8 @@ pwm.frequency = 50
 SERVO_CHANNEL = 0   
 
 # Valeurs à calibrer en duty cycle (0-65535)
-SERVO_MIN    = 2977   # butée gauche  
-SERVO_CENTER = 5215   # centre       
+SERVO_MIN    = 3477   # butée gauche  
+SERVO_CENTER = 5085   # centre       
 SERVO_MAX    = 7153   # butée droite  
 
 
@@ -40,9 +40,9 @@ def calibrate_servo():
             set_servo_raw(val)
             cmd = input(f"{label} (valeur={val}) +/-/Entrée : ").strip()
             if cmd == "+":
-                val = min(65535, val + 100)
+                val = min(65535, val + 70)
             elif cmd == "-":
-                val = max(0, val - 100)
+                val = max(0, val - 70)
             elif cmd == "":
                 print(f"✓ {label} = {val}\n")
                 return val
