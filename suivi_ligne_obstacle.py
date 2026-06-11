@@ -156,19 +156,20 @@ def retrouver_ligne():
 #  Convention : 0 = blanc, 1 = ligne noire
 # -------------------------------------------------------------
 def suivre_ligne():
-    pattern = capteur_ligne.read_pattern()      # ex : "010"
+    pattern = capteur_ligne.read_pattern()
 
-    if pattern == "010":                        # ligne centree
+    if pattern == "010":
         set_servo_angle(0)
-    elif pattern in ("100", "110"):             # ligne a gauche
+    elif pattern in ("100", "110"):
         set_servo_angle(-ANGLE_VIRAGE)
-    elif pattern in ("001", "011"):             # ligne a droite
+    elif pattern in ("001", "011"):
         set_servo_angle(ANGLE_VIRAGE)
-    elif pattern == "111":                      # noir partout -> tout droit
+    elif pattern == "111":
         set_servo_angle(0)
-    elif pattern == "000":                      # ligne perdue -> recherche
+    elif pattern == "000":
         retrouver_ligne()
-    # "101" : cas ambigu -> on garde la direction courante
+        set_servo_angle(0)                          # roues droites
+        drive_full(VITESSE_MARCHE, 1, ramp_time=RAMPE)   # ON REPART
 
 
 # -------------------------------------------------------------
