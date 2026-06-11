@@ -2,13 +2,14 @@
 # -*- coding: utf-8 -*-
 # =============================================================
 #  CTP2 Mastercamp - Systemes Embarques
-#  Tache 10 : Suivi de source lumineuse avec gestion d'obstacle
+#  Tache 11 : Suivi de ligne noire avec gestion d'obstacle
 #
 #  Auteur : Maiwen
-#  Date   : 10 juin 2026
+#  Date   : 11 juin 2026
 #
-#  BRIQUE 5 : suivi de lumiere (servo de direction) integre
-#             aux briques 1-4 (clavier, moteur, obstacle, detresse)
+#  Reutilise les modules : moteur (drive), ultrason (tache5),
+#  WS2812, phares (control_leds), servo (etalonnage_servo),
+#  capteur de ligne (task6_line_tracking).
 # =============================================================
 
 import sys
@@ -30,12 +31,12 @@ from LEDWS2812_Controller import piloter_led, led
 import control_leds
 
 # --- Module servo de direction (Tache 3) ---
-# set_servo_angle(angle) : -100 (gauche) a +100 (droite), 0 = centre
 from etalonnage_servo_direction import set_servo_angle
 
-# --- Module capteur de lumiere (Tache 8) ---
-# LightTrackingSensor : calibrate(), read_value(), classify_value()
-from task8_light_tracking import LightTrackingSensor
+# --- Module capteur de ligne (Tache 6) ---
+# read_pattern() -> chaine "LMR", ex "010"
+#   convention : 0 = surface claire (blanc) / 1 = ligne noire (ou vide)
+from task6_line_tracking import LineTrackingSensor
 
 # -------------------------------------------------------------
 #  Parametres
@@ -45,20 +46,21 @@ VITESSE_RECUL  = 25      # % du max pour le recul
 RAMPE          = 1.0     # rampe d'acceleration en marche avant (s)
 PERIODE_BOUCLE = 0.2     # pause entre deux tours de boucle (s)
 
-SEUIL_OBSTACLE = 200     # mm (20 cm) : distance d'arret sur obstacle
+SEUIL_OBSTACLE = 200     # mm (20 cm) : distance d'arret, PARAMETRABLE (consigne)
 
-PAUSE_AVANT_RECUL = 1.0  # 1 s entre l'arret et le recul (consigne)
-DUREE_RECUL       = 1.5  # s de recul -> A CALIBRER pour obtenir ~30 cm
-PAUSE_APRES       = 2.0  # 2 s d'arret avant reprise (consigne)
+PAUSE_AVANT_RECUL = 1.0  # 1 s entre l'arret et le recul
+DUREE_RECUL       = 1.5  # s de recul obstacle -> A CALIBRER (~30 cm)
+PAUSE_APRES       = 2.0  # 2 s d'arret avant reprise
 
-ANGLE_VIRAGE   = 40      # degres de braquage pour suivre la lumiere (a ajuster)
+ANGLE_VIRAGE     = 40    # degres de braquage pour suivre la ligne (a ajuster)
+MAX_ESSAIS_RECUL = 5     # nb de petits reculs avant d'abandonner la recherche
 
 # Phares avant rouges (canaux R), logique inverse -> active_high=False
 phare_gauche = LED(control_leds.PIN_LEFT_R,  active_high=False)   # GPIO0
 phare_droite = LED(control_leds.PIN_RIGHT_R, active_high=False)   # GPIO1
 
-# Capteur de lumiere (sera calibre au premier M)
-capteur_lumiere = LightTrackingSensor()
+# Capteur de ligne (3 capteurs IR : gauche / milieu / droite)
+capteur_ligne = LineTrackingSensor()
 
 
 # -------------------------------------------------------------
@@ -99,7 +101,7 @@ def clignoter_feux(duree, periode=0.4):
 
 
 # -------------------------------------------------------------
-#  Recul avec Bip Bip
+#  Recul avec Bip Bip (reaction obstacle)
 # -------------------------------------------------------------
 def reculer_avec_bip(duree):
     drive_full(VITESSE_RECUL, -1, ramp_time=0.5)
@@ -117,7 +119,7 @@ def reculer_avec_bip(duree):
 # -------------------------------------------------------------
 def reaction_obstacle():
     drive(0)
-    set_servo_angle(0)                # roues droites pendant la manoeuvre
+    set_servo_angle(0)
     print(">> Feux de detresse")
     clignoter_feux(PAUSE_AVANT_RECUL)
 
@@ -131,31 +133,54 @@ def reaction_obstacle():
 
 
 # -------------------------------------------------------------
-#  Suivi de lumiere : oriente le servo selon l'etat du capteur
+#  Recherche de la ligne quand elle est perdue (pattern 000)
 # -------------------------------------------------------------
-def suivre_lumiere():
-    valeur = capteur_lumiere.read_value()
-    etat, ecart, _ = capteur_lumiere.classify_value(valeur)
+def retrouver_ligne():
+    """Recule par petits coups jusqu'a revoir la ligne, avec une limite."""
+    print(">> Ligne perdue : recul pour la retrouver")
+    drive(0)
+    essais = 0
+    while essais < MAX_ESSAIS_RECUL:
+        drive_full(VITESSE_RECUL, -1, ramp_time=0.3)   # petit recul
+        time.sleep(0.3)
+        drive(0)
+        if capteur_ligne.read_pattern() != "000":      # ligne revue ?
+            print(">> Ligne retrouvee")
+            return
+        essais += 1
+    print(">> Ligne introuvable : arret")
 
-    if etat == "balanced":
-        set_servo_angle(0)                   # source en face -> tout droit
-    elif etat == "low":
-        set_servo_angle(-ANGLE_VIRAGE)       # A VERIFIER : tourner a gauche
-    elif etat == "high":
-        set_servo_angle(ANGLE_VIRAGE)        # A VERIFIER : tourner a droite
+
+# -------------------------------------------------------------
+#  Suivi de ligne : corrige la direction selon les 3 capteurs
+#  Convention : 0 = blanc, 1 = ligne noire
+# -------------------------------------------------------------
+def suivre_ligne():
+    pattern = capteur_ligne.read_pattern()      # ex : "010"
+
+    if pattern == "010":                        # ligne centree
+        set_servo_angle(0)
+    elif pattern in ("100", "110"):             # ligne a gauche
+        set_servo_angle(-ANGLE_VIRAGE)
+    elif pattern in ("001", "011"):             # ligne a droite
+        set_servo_angle(ANGLE_VIRAGE)
+    elif pattern == "111":                      # noir partout -> tout droit
+        set_servo_angle(0)
+    elif pattern == "000":                      # ligne perdue -> recherche
+        retrouver_ligne()
+    # "101" : cas ambigu -> on garde la direction courante
 
 
 # -------------------------------------------------------------
 #  Programme principal
 # -------------------------------------------------------------
 def main():
-    print("=== Tache 10 - Brique 5 (suivi lumiere + obstacle) ===")
+    print("=== Tache 11 - Suivi de ligne + detection obstacle ===")
     print("Commandes : 'M' = marche / 'A' = arret / Ctrl+C = quitter")
 
     feux_off()
     set_servo_angle(0)                # roues droites au depart
     en_marche = False
-    deja_calibre = False              # le capteur sera calibre au 1er M
 
     try:
         while True:
@@ -163,11 +188,6 @@ def main():
             touche = lire_touche()
             if touche is not None:
                 if touche in ('M', 'm'):
-                    # Calibration du capteur lumiere au tout premier M
-                    if not deja_calibre:
-                        print(">> Calibration lumiere : ne touchez pas au capteur...")
-                        capteur_lumiere.calibrate()
-                        deja_calibre = True
                     en_marche = True
                     print(">> Commande M : MARCHE")
                     drive_full(VITESSE_MARCHE, 1, ramp_time=RAMPE)
@@ -179,7 +199,7 @@ def main():
                 else:
                     print(f">> Touche ignoree : '{touche}'")
 
-            # --- 2. Si en marche : obstacle prioritaire, sinon suivi lumiere ---
+            # --- 2. Si en marche : obstacle prioritaire, sinon suivi ligne ---
             if en_marche:
                 distance = distance_mm()
                 if distance is not None and distance < SEUIL_OBSTACLE:
@@ -188,7 +208,7 @@ def main():
                     print(">> Reprise de la marche")
                     drive_full(VITESSE_MARCHE, 1, ramp_time=RAMPE)
                 else:
-                    suivre_lumiere()          # pas d'obstacle -> on suit la lumiere
+                    suivre_ligne()            # pas d'obstacle -> on suit la ligne
 
             # --- 3. Pause ---
             time.sleep(PERIODE_BOUCLE)
