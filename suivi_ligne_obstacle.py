@@ -41,7 +41,7 @@ from task6_line_tracking import LineTrackingSensor
 # -------------------------------------------------------------
 #  Parametres
 # -------------------------------------------------------------
-VITESSE_MARCHE = 25      # % du max : vitesse reduite (consigne)
+VITESSE_MARCHE = 20     # % du max : vitesse reduite (consigne)
 VITESSE_RECUL  = 25      # % du max pour le recul
 RAMPE          = 1.0     # rampe d'acceleration en marche avant (s)
 PERIODE_BOUCLE = 0.2     # pause entre deux tours de boucle (s)
@@ -159,12 +159,16 @@ def suivre_ligne():
     pattern = capteur_ligne.read_pattern()
 
     if pattern == "010":
+        print("capteur milieu active :",pattern)
         set_servo_angle(0)
     elif pattern in ("100", "110"):
-        set_servo_angle(-ANGLE_VIRAGE)
-    elif pattern in ("001", "011"):
+        print("capteur droit  pas active :", pattern)
         set_servo_angle(ANGLE_VIRAGE)
+    elif pattern in ("001", "011"):
+        print("in 001,011", pattern)
+        set_servo_angle(-ANGLE_VIRAGE)
     elif pattern == "111":
+        print("full:", pattern)
         set_servo_angle(0)
     elif pattern == "000":
         retrouver_ligne()
