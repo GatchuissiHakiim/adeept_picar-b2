@@ -7,9 +7,9 @@
 #  Auteur : Maiwen
 #  Date   : 11 juin 2026
 #
-#  Reutilise les modules : moteur (drive), ultrason (tache5),
-#  WS2812, phares (control_leds), servo (etalonnage_servo),
-#  capteur de ligne (task6_line_tracking).
+#  Gestion des virages serres : quand la ligne est perdue dans
+#  un virage, le robot recule en CONTRE-BRAQUANT (facon creneau)
+#  pour compenser son angle de braquage limite, puis repart.
 # =============================================================
 
 import sys
@@ -31,29 +31,29 @@ from LEDWS2812_Controller import piloter_led, led
 import control_leds
 
 # --- Module servo de direction (Tache 3) ---
+# set_servo_angle(angle) : negatif = gauche, positif = droite, 0 = centre
 from etalonnage_servo_direction import set_servo_angle
 
 # --- Module capteur de ligne (Tache 6) ---
-# read_pattern() -> chaine "LMR", ex "010"
-#   convention : 0 = surface claire (blanc) / 1 = ligne noire (ou vide)
+# read_pattern() -> chaine "LMR" (0 = blanc, 1 = ligne noire)
 from task6_line_tracking import LineTrackingSensor
 
 # -------------------------------------------------------------
 #  Parametres
 # -------------------------------------------------------------
-VITESSE_MARCHE = 20     # % du max : vitesse reduite (consigne)
+VITESSE_MARCHE = 30      # % du max : vitesse reduite (consigne)
 VITESSE_RECUL  = 25      # % du max pour le recul
 RAMPE          = 1.0     # rampe d'acceleration en marche avant (s)
 PERIODE_BOUCLE = 0.2     # pause entre deux tours de boucle (s)
 
 SEUIL_OBSTACLE = 200     # mm (20 cm) : distance d'arret, PARAMETRABLE (consigne)
 
-PAUSE_AVANT_RECUL = 1.0  # 1 s entre l'arret et le recul
+PAUSE_AVANT_RECUL = 1.0  # 1 s entre l'arret et le recul (obstacle)
 DUREE_RECUL       = 1.5  # s de recul obstacle -> A CALIBRER (~30 cm)
-PAUSE_APRES       = 2.0  # 2 s d'arret avant reprise
+PAUSE_APRES       = 2.0  # 2 s d'arret avant reprise (obstacle)
 
-ANGLE_VIRAGE     = 40    # degres de braquage pour suivre la ligne (a ajuster)
-MAX_ESSAIS_RECUL = 5     # nb de petits reculs avant d'abandonner la recherche
+ANGLE_VIRAGE    = 40     # degres de braquage pour suivre la ligne (a ajuster)
+DUREE_MANOEUVRE = 0.6    # s de recul en contre-braquage (virage) -> A CALIBRER
 
 # Phares avant rouges (canaux R), logique inverse -> active_high=False
 phare_gauche = LED(control_leds.PIN_LEFT_R,  active_high=False)   # GPIO0
@@ -61,6 +61,10 @@ phare_droite = LED(control_leds.PIN_RIGHT_R, active_high=False)   # GPIO1
 
 # Capteur de ligne (3 capteurs IR : gauche / milieu / droite)
 capteur_ligne = LineTrackingSensor()
+
+# Memoire du dernier cote ou la ligne a ete vue
+#   -1 = ligne a gauche, +1 = ligne a droite, 0 = centre / inconnu
+dernier_cote = 0
 
 
 # -------------------------------------------------------------
@@ -133,22 +137,30 @@ def reaction_obstacle():
 
 
 # -------------------------------------------------------------
-#  Recherche de la ligne quand elle est perdue (pattern 000)
+#  Manoeuvre de virage serre (ligne perdue, pattern 000)
+#  Le robot recule en CONTRE-BRAQUANT pour se repositionner,
+#  puis repart en avant. Compense l'angle de braquage limite.
 # -------------------------------------------------------------
-def retrouver_ligne():
-    """Recule par petits coups jusqu'a revoir la ligne, avec une limite."""
-    print(">> Ligne perdue : recul pour la retrouver")
+def manoeuvre_virage():
+    print(">> Virage serre : manoeuvre de repositionnement")
     drive(0)
-    essais = 0
-    while essais < MAX_ESSAIS_RECUL:
-        drive_full(VITESSE_RECUL, -1, ramp_time=0.3)   # petit recul
-        time.sleep(0.3)
-        drive(0)
-        if capteur_ligne.read_pattern() != "000":      # ligne revue ?
-            print(">> Ligne retrouvee")
-            return
-        essais += 1
-    print(">> Ligne introuvable : arret")
+
+    # On recule en braquant a l'OPPOSE du cote ou etait la ligne
+    if dernier_cote == +1:               # ligne a droite -> recul roues a GAUCHE
+        set_servo_angle(ANGLE_VIRAGE)
+    elif dernier_cote == -1:             # ligne a gauche -> recul roues a DROITE
+        set_servo_angle(-ANGLE_VIRAGE)
+    else:                                # cote inconnu -> recul tout droit
+        set_servo_angle(0)
+
+    # Recul de repositionnement
+    drive_full(VITESSE_RECUL, -1, ramp_time=0.3)
+    time.sleep(DUREE_MANOEUVRE)
+    drive(0)
+
+    # On remet droit et on repart en avant
+    set_servo_angle(0)
+    drive_full(VITESSE_MARCHE, 1, ramp_time=RAMPE)
 
 
 # -------------------------------------------------------------
@@ -156,24 +168,22 @@ def retrouver_ligne():
 #  Convention : 0 = blanc, 1 = ligne noire
 # -------------------------------------------------------------
 def suivre_ligne():
-    pattern = capteur_ligne.read_pattern()
+    global dernier_cote
+    pattern = capteur_ligne.read_pattern()      # ex : "010"
 
-    if pattern == "010":
-        print("capteur milieu active :",pattern)
+    if pattern == "010":                        # ligne centree
         set_servo_angle(0)
-    elif pattern in ("100", "110"):
-        print("capteur droit  pas active :", pattern)
+        dernier_cote = 0
+    elif pattern in ("100", "110"):             # ligne a gauche
         set_servo_angle(ANGLE_VIRAGE)
-    elif pattern in ("001", "011"):
-        print("in 001,011", pattern)
+        dernier_cote = -1
+    elif pattern in ("001", "011"):             # ligne a droite
         set_servo_angle(-ANGLE_VIRAGE)
-    elif pattern == "111":
-        print("full:", pattern)
+        dernier_cote = +1
+    elif pattern == "111":                      # noir partout -> tout droit
         set_servo_angle(0)
-    elif pattern == "000":
-        retrouver_ligne()
-        set_servo_angle(0)                          # roues droites
-        drive_full(VITESSE_MARCHE, 1, ramp_time=RAMPE)   # ON REPART
+    elif pattern == "000":                      # ligne perdue -> manoeuvre
+        manoeuvre_virage()
 
 
 # -------------------------------------------------------------
