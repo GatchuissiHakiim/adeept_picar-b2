@@ -155,21 +155,29 @@ def retrouver_ligne():
 #  Suivi de ligne : corrige la direction selon les 3 capteurs
 #  Convention : 0 = blanc, 1 = ligne noire
 # -------------------------------------------------------------
+dernier_virage = 0     # memoire du dernier braquage (-ANGLE / 0 / +ANGLE)
+
 def suivre_ligne():
+    global dernier_virage
     pattern = capteur_ligne.read_pattern()
 
     if pattern == "010":
         set_servo_angle(0)
+        dernier_virage = 0
     elif pattern in ("100", "110"):
         set_servo_angle(-ANGLE_VIRAGE)
+        dernier_virage = -ANGLE_VIRAGE         # on memorise : virage a gauche
     elif pattern in ("001", "011"):
         set_servo_angle(ANGLE_VIRAGE)
+        dernier_virage = ANGLE_VIRAGE          # on memorise : virage a droite
     elif pattern == "111":
         set_servo_angle(0)
     elif pattern == "000":
-        retrouver_ligne()
-        set_servo_angle(0)                          # roues droites
-        drive_full(VITESSE_MARCHE, 1, ramp_time=RAMPE)   # ON REPART
+        # ligne perdue : on continue dans le dernier sens connu
+        if dernier_virage != 0:
+            set_servo_angle(dernier_virage)    # on garde le braquage du virage
+        else:
+            retrouver_ligne()                  # vraiment perdu -> recherche
 
 
 # -------------------------------------------------------------
