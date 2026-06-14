@@ -4,13 +4,17 @@
 #  CTP2 Mastercamp - Systemes Embarques
 #  Tache 11 : Suivi de ligne noire (3 cm) avec gestion d'obstacle
 #
-#  Auteur : Maiwen
-#  Date   : 11 juin 2026
+#  Auteur : Maïwen CHRIST
+#  Date   : 12 juin 2026
 #
-#  Logique de suivi (ligne large : centre = 111) :
-#   - 111 (3 capteurs sur la ligne) -> tout droit, VITESSE NORMALE
-#   - ligne decalee (1 ou 2 capteurs) -> on tourne et on RALENTIT
-#   - 000 (ligne perdue) -> gestion par duree (trou / virage serre)
+#  Suivi de ligne a 3 niveaux de vitesse :
+#   - 111            -> ligne droite       : vitesse NORMALE
+#   - 110 / 011      -> leger decalage      : vitesse / 2
+#   - 100 / 001      -> virage serre        : vitesse / 3
+#   - 000            -> ligne perdue        : manoeuvre (recul contre-braque)
+#  La derniere direction connue (dernier_cote) n'est mise a jour que
+#  sur un decalage, jamais en ligne droite : on la garde en memoire
+#  pour bien contre-braquer au moment ou la ligne est perdue.
 # =============================================================
 
 import sys
@@ -42,7 +46,6 @@ from task6_line_tracking import LineTrackingSensor
 #  Parametres
 # -------------------------------------------------------------
 VITESSE_NORMALE = 30     # % du max : ligne droite
-VITESSE_VIRAGE  = 20     # % du max : en virage, on ralentit
 VITESSE_RECUL   = 25     # % du max : recul (obstacle / manoeuvre)
 RAMPE           = 1.0    # rampe d'acceleration au demarrage (s)
 PERIODE_BOUCLE  = 0.15   # pause entre deux tours de boucle (s)
@@ -56,9 +59,6 @@ PAUSE_APRES       = 2.0  # 2 s d'arret avant reprise (obstacle)
 ANGLE_VIRAGE    = 40     # degres de braquage (a ajuster)
 DUREE_MANOEUVRE = 0.6    # s de recul en contre-braquage -> A CALIBRER
 
-TROU_MAX       = 4       # 000 toleres sans rien faire (trou de pointille)
-MAX_MANOEUVRES = 4       # nb de manoeuvres avant arret de securite
-
 # Phares avant rouges (canaux R), logique inverse -> active_high=False
 phare_gauche = LED(control_leds.PIN_LEFT_R,  active_high=False)   # GPIO0
 phare_droite = LED(control_leds.PIN_RIGHT_R, active_high=False)   # GPIO1
@@ -67,10 +67,8 @@ phare_droite = LED(control_leds.PIN_RIGHT_R, active_high=False)   # GPIO1
 capteur_ligne = LineTrackingSensor()
 
 # Etat du suivi
-dernier_cote     = 0     # -1 = ligne a gauche, +1 = a droite, 0 = centre
-compteur_perte   = 0     # nb de "000" consecutifs
-essais_manoeuvre = 0     # nb de manoeuvres consecutives sans succes
-vitesse_actuelle = 0     # vitesse moteur courante (pour ne relancer que si ca change)
+dernier_cote     = 0     # -1 = ligne a gauche, +1 = a droite, 0 = inconnu
+vitesse_actuelle = 0     # vitesse moteur courante (relance seulement si ca change)
 
 
 # -------------------------------------------------------------
@@ -181,23 +179,23 @@ def reaction_obstacle():
 
 
 # -------------------------------------------------------------
-#  Manoeuvre de virage serre (perte de ligne PROLONGEE)
-#  Recule en contre-braquant (roues a l'oppose du virage),
+#  Manoeuvre de virage serre (ligne perdue, pattern 000)
+#  Recule en CONTRE-BRAQUANT selon la derniere direction connue,
 #  puis repart en avant a vitesse normale.
 # -------------------------------------------------------------
 def manoeuvre_virage():
     global vitesse_actuelle
-    print(">> Virage serre : manoeuvre de repositionnement")
+    print(">> Ligne perdue : manoeuvre de repositionnement")
     drive(0)
     vitesse_actuelle = 0
 
-    # Contre-braquage : roues a l'oppose du cote ou etait la ligne
-    if dernier_cote == +1:          # virage a droite -> roues a GAUCHE
+    # Contre-braquage : roues a l'OPPOSE du cote ou etait la ligne
+    if dernier_cote == +1:          # ligne perdue a DROITE -> roues a GAUCHE
         braquer_gauche()
-    elif dernier_cote == -1:        # virage a gauche -> roues a DROITE
+    elif dernier_cote == -1:        # ligne perdue a GAUCHE -> roues a DROITE
         braquer_droite()
     else:
-        roues_droites()
+        roues_droites()             # cote inconnu -> recul tout droit
 
     time.sleep(0.2)                 # laisse le servo tourner AVANT de reculer
 
@@ -210,56 +208,45 @@ def manoeuvre_virage():
 
 
 # -------------------------------------------------------------
-#  Suivi de ligne
+#  Suivi de ligne (coeur de la tache)
 #  Convention capteurs : 0 = blanc, 1 = ligne noire
+#  Plus le robot est decale, plus il ralentit.
 # -------------------------------------------------------------
 def suivre_ligne():
-    global dernier_cote, compteur_perte, essais_manoeuvre, vitesse_actuelle
+    global dernier_cote
     pattern = capteur_ligne.read_pattern()      # ex : "111"
 
-    # --- Ligne droite : 3 capteurs (ou centre seul) -> tout droit, vitesse normale ---
-    if pattern in ("111", "010"):
+    if pattern == "111":                        # ligne droite -> tout droit
         roues_droites()
         rouler(VITESSE_NORMALE)
-        dernier_cote = 0
-        compteur_perte = 0
-        essais_manoeuvre = 0
-        return
+        # on NE touche PAS a dernier_cote : on garde la derniere direction connue
 
-    # --- Ligne decalee a gauche -> tourner a gauche en RALENTISSANT ---
-    if pattern in ("110", "100"):
+    elif pattern == "110":                      # leger decalage a gauche
         braquer_gauche()
-        rouler(VITESSE_VIRAGE)
+        rouler(VITESSE_NORMALE // 2)            # vitesse / 2
         dernier_cote = -1
-        compteur_perte = 0
-        essais_manoeuvre = 0
-        return
 
-    # --- Ligne decalee a droite -> tourner a droite en RALENTISSANT ---
-    if pattern in ("011", "001"):
+    elif pattern == "011":                      # leger decalage a droite
         braquer_droite()
-        rouler(VITESSE_VIRAGE)
+        rouler(VITESSE_NORMALE // 2)
         dernier_cote = +1
-        compteur_perte = 0
-        essais_manoeuvre = 0
-        return
 
-    # --- pattern "000" : aucune ligne -> on raisonne sur la DUREE ---
-    compteur_perte += 1
+    elif pattern == "100":                      # virage serre a gauche
+        braquer_gauche()
+        rouler(VITESSE_NORMALE // 3)            # vitesse / 3
+        dernier_cote = -1
 
-    if compteur_perte <= TROU_MAX:
-        # Perte BREVE : trou de pointille ou poursuite d'un virage.
-        # On ne touche a rien : le robot garde son angle et continue.
-        return
+    elif pattern == "001":                      # virage serre a droite
+        braquer_droite()
+        rouler(VITESSE_NORMALE // 3)
+        dernier_cote = +1
 
-    if essais_manoeuvre < MAX_MANOEUVRES:
-        essais_manoeuvre += 1
+    elif pattern == "010":                      # centre seul -> tout droit
+        roues_droites()
+        rouler(VITESSE_NORMALE)
+
+    elif pattern == "000":                      # ligne perdue -> manoeuvre
         manoeuvre_virage()
-        compteur_perte = 0
-    else:
-        print(">> Ligne introuvable : arret de securite")
-        drive(0)
-        vitesse_actuelle = 0
 
 
 # -------------------------------------------------------------
