@@ -268,8 +268,6 @@ def main():
                 print_help()
                 continue
 
-            # Important : cette commande doit être testée avant le split,
-            # car elle ne contient pas deux éléments du type "servo angle".
             if command in ("demo", "signature", "show"):
                 controller.signature_demo()
                 continue
